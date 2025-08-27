@@ -1,0 +1,8 @@
+embeddings:
+  provider: openai
+  model: text-embedding-3-small
+
+llm:
+  provider: openai
+  structured_model: gpt-4o
+

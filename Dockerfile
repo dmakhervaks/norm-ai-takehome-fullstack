@@ -7,12 +7,19 @@ WORKDIR /norm-fullstack
 # Copy the dependencies file to the working directory
 COPY requirements.txt .
 
-# Install any dependencies
-RUN pip install --no-cache-dir --upgrade -r requirements.txt
-RUN pip install uvicorn
+# System deps (for PyMuPDF and rendering backends)
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       libglib2.0-0 \
+       libgl1 \
+    && rm -rf /var/lib/apt/lists/*
 
-# API key
-ENV OPENAI_API_KEY=$OPENAI_API_KEY
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+# Do not bake secrets into the image; pass OPENAI_API_KEY at runtime via `-e OPENAI_API_KEY=...`
 
 # Copy the content of the local src directory to the working directory
 COPY ./app /norm-fullstack/app
