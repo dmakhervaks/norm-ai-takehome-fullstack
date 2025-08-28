@@ -14,14 +14,6 @@ This service processes a PDF of laws from the fictional Game of Thrones universe
 - **REST API**: FastAPI with automatic Swagger documentation
 - **Docker Support**: Containerized application for easy deployment
 
-## Architecture
-
-```
-docs/laws.pdf → DocumentService → QdrantService → FastAPI Endpoint
-                     ↓              ↓               ↓
-                 PDF parsing    Vector storage   Query interface
-```
-
 ## Prerequisites
 
 - Python 3.11+
@@ -176,7 +168,7 @@ The application supports three different document processing methods:
 
 2. **LLM Structured**: PDF → markdown → LLM-enhanced structuring. Uses OpenAI to intelligently parse sections into hierarchical legal structures with proper titles and content organization. Processes documents in configurable batches (default: 15 sections) to manage costs and token limits.
 
-3. **LLM Structured General**: Similar to LLM Structured but optimized for varied document formats (like the "strange state laws" PDF). Uses different parsing logic and smaller batches (default: 1 section) for more careful processing of irregular layouts.
+3. **LLM Structured General**: Similar to LLM Structured but optimized for varied document formats (like the "strange state laws" PDF). Uses different parsing logic and smaller batches (default: 1 section) for more careful processing of irregular layouts. This method was added as a result of trying previous implementation on a pdf of a different format
 
 ## Implementation Notes
 
@@ -185,10 +177,13 @@ The application supports three different document processing methods:
 - Initialization of query engine inside of query (to allow for dynamic k)
 - We prepend the subtitles as part of the text
 - We could spend more time with tuning the synthesizer templates (i.e. if we knew more of what the document distribution was like). However, we decided not to for the sake of this problem
+- Mostly tried gpt-4o, but added support for reasoning models which have a slightly different API
+- Support for structured responses for increased robustness and reliability.
 
 
 ## Assumptions
 - The PDF will have some sort of list/hierachical nature
 - There are headings, bolding, etc. which can be parsed into MD via helper libraries
+- The user has access
 
 
