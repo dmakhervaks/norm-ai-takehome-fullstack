@@ -24,3 +24,15 @@ LLM_STRUCTURING_PROMPT = (
 )
 
 
+LLM_STRUCTURING_PROMPT_GENERAL = (
+    "You are a legal document parser. Please analyze the following legal text and structure it into sections.\n\n"
+    "The sections may be nested with subsections, like a tree. Only the most nested subsection should be treated as its own section.\n"
+    "The titles and subtitles should be part of the section title and the most nested subsection should be the section content.\n\n"
+    "The section may also be a list of items with XML, HTTP, or other formats for tags, heading size, etc.\n"
+    "Please use your best judgement to determine the section title, section number, and section content.\n"
+    "The sections should be relatively compact and contain similar information. Your job is not do re-write or re-organize the text.\n"
+    "But rather create sections from the existing text, keeping only relevant information and removing things like formatting, footnotes, etc.\n"
+    "Raw text to parse:\n{content}...\n"
+)
+
+

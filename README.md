@@ -165,41 +165,30 @@ Try these example queries:
 - Comprehensive error handling and logging
 - Automatic request/response validation with Pydantic
 
-## Dependencies
-
-Key libraries used:
-- `fastapi`: Web framework
-- `llama-index`: RAG pipeline framework
-- `qdrant-client`: Vector database client
-- `PyMuPDF`: PDF text extraction
-- `openai`: OpenAI API integration
-- `pydantic`: Data validation
 
 ## Design Decisions
 
-- **In-Memory Vector Store**: Uses Qdrant in-memory for simplicity and fast startup
-- **Intelligent Text Segmentation**: Multiple parsing strategies to handle various law formats
-- **Citation Support**: Maintains source tracking for transparency
-- **Error Handling**: Graceful fallbacks when services fail
-- **Containerization**: Docker support for consistent deployment
-- PDF -> MD is better than PDF -> raw text as it helps break into main sections easier. Raw text worked decently with regex, but not as well as with MD parsing
+## Document Processing Methods
+
+The application supports three different document processing methods:
+
+1. **Markdown**: Basic PDF → markdown conversion with regex-based section splitting. Fast and simple, works well for consistently formatted documents.
+
+2. **LLM Structured**: PDF → markdown → LLM-enhanced structuring. Uses OpenAI to intelligently parse sections into hierarchical legal structures with proper titles and content organization. Processes documents in configurable batches (default: 15 sections) to manage costs and token limits.
+
+3. **LLM Structured General**: Similar to LLM Structured but optimized for varied document formats (like the "strange state laws" PDF). Uses different parsing logic and smaller batches (default: 1 section) for more careful processing of irregular layouts.
+
+## Implementation Notes
+
+- PDF → MD is better than PDF → raw text as it helps break into main sections easier. Raw text worked decently with regex, but not as well as with MD parsing
 - Usage of LLM was found to better structure text into more accurate sections/documents (but depending on document size, cost contraints, we would limit the amount of sections we parse at a time). The batch size, can be a function of the total tokens, but for now it is just constant.
 - Initialization of query engine inside of query (to allow for dynamic k)
 - We prepend the subtitles as part of the text
 - We could spend more time with tuning the synthesizer templates (i.e. if we knew more of what the document distribution was like). However, we decided not to for the sake of this problem
 
+
 ## Assumptions
 - The PDF will have some sort of list/hierachical nature
 - There are headings, bolding, etc. which can be parsed into MD via helper libraries
 
-### Common Issues
-
-1. **OpenAI API Key Error**: Ensure your API key is set correctly
-2. **Import Errors**: Make sure all dependencies are installed in the virtual environment
-3. **Port Conflicts**: Change the port if 8000 is already in use
-4. **PDF Not Found**: Ensure `docs/laws.pdf` exists in the correct location
-
-### Logging
-
-The application logs startup information and errors to the console. Check the logs if queries aren't working as expected.
 

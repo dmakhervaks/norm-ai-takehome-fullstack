@@ -1,7 +1,7 @@
 'use client';
 
 import HeaderNav from '@/components/HeaderNav';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Box, Button, Flex, HStack, NumberInput, NumberInputField, Radio, RadioGroup, Stack, Text, Textarea } from '@chakra-ui/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,19 +10,40 @@ import { sampleQueries } from './sampleQueries';
 
 export default function Page() {
   const [query, setQuery] = useState('');
-  const [indexChoice, setIndexChoice] = useState<'llm_structured' | 'markdown'>('llm_structured');
+  const [indexChoice, setIndexChoice] = useState<'llm_structured' | 'llm_structured_general' | 'markdown'>('llm_structured');
   const [loading, setLoading] = useState(false);
   const [responseMd, setResponseMd] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [similarityTopK, setSimilarityTopK] = useState<number>(3);
   const [citationChunkSize, setCitationChunkSize] = useState<number>(512);
+  const [pdfName, setPdfName] = useState<string>('');
+
+  // Fetch PDF info on component mount
+  useEffect(() => {
+    const fetchPdfInfo = async () => {
+      try {
+        const res = await fetch('/api/pdf-info');
+        if (res.ok) {
+          const data = await res.json();
+          setPdfName(data.pdf_name || '');
+        }
+      } catch (e) {
+        console.error('Failed to fetch PDF info:', e);
+      }
+    };
+    fetchPdfInfo();
+  }, []);
 
   const onSubmit = async () => {
     setLoading(true);
     setError(null);
     setResponseMd(null);
     try {
-      const endpoint = indexChoice === 'llm_structured' ? '/api/query/llm_structured' : '/api/query/markdown';
+      const endpoint = indexChoice === 'llm_structured' 
+        ? '/api/query/llm_structured' 
+        : indexChoice === 'llm_structured_general'
+        ? '/api/query/llm_structured_general'
+        : '/api/query/markdown';
       const url = `${endpoint}?q=${encodeURIComponent(query)}&similarity_top_k=${encodeURIComponent(String(similarityTopK))}&citation_chunk_size=${encodeURIComponent(String(citationChunkSize))}`;
       const res = await fetch(url, { method: 'GET' });
       if (!res.ok) {
@@ -47,7 +68,14 @@ export default function Page() {
     <>
       <HeaderNav signOut={() => {}} />
       <Flex direction="column" gap={6} p={6} maxW="900px" mx="auto">
-        <Text fontSize="2xl" fontWeight="bold">Legal Query</Text>
+        <Flex align="center" gap={3}>
+          <Text fontSize="2xl" fontWeight="bold">Legal Query</Text>
+          {pdfName && (
+            <Text fontSize="sm" color="gray.600" fontStyle="italic">
+              • {pdfName}
+            </Text>
+          )}
+        </Flex>
         <Box>
           <Text fontSize="sm" color="gray.700" mb={2}>Sample queries</Text>
           <HStack flexWrap="wrap" gap={2}>
@@ -59,6 +87,7 @@ export default function Page() {
         <RadioGroup onChange={(v) => setIndexChoice(v as any)} value={indexChoice}>
           <HStack spacing={6}>
             <Radio value="llm_structured">LLM Structured</Radio>
+            <Radio value="llm_structured_general">LLM Structured General</Radio>
             <Radio value="markdown">Markdown</Radio>
           </HStack>
         </RadioGroup>
@@ -96,7 +125,7 @@ export default function Page() {
           </Box>
         )}
         <Box fontSize="sm" color="gray.600">
-          Backend endpoints via proxy: <code>/api/query/llm_structured</code>, <code>/api/query/markdown</code>
+          Backend endpoints via proxy: <code>/api/query/llm_structured</code>, <code>/api/query/llm_structured_general</code>, <code>/api/query/markdown</code>
         </Box>
       </Flex>
     </>

@@ -1,6 +1,6 @@
 __all__ = [
     "utils",
-    "promps"
+    "prompts"
 ]
 
 

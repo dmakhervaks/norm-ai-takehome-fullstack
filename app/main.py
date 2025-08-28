@@ -1,8 +1,14 @@
-from fastapi import FastAPI, Query, HTTPException
-from app.utils import Output, DocumentService, QdrantService
+# Standard library imports
 import os
-import gradio as gr
+
+# Third-party imports
 import uvicorn
+from fastapi import FastAPI, HTTPException, Query
+
+# Local imports
+from app.utils import DocumentService, Output, QdrantService
+
+DOC_PATH = "docs/laws.pdf"
 
 app = FastAPI(
     title="Norm AI Legal Query API",
@@ -13,31 +19,38 @@ app = FastAPI(
 # Global services - initialized on startup
 doc_service = None
 qdrant_service_llm_structured = None
+qdrant_service_llm_structured_general = None
 qdrant_service_markdown = None
 
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on startup"""
-    global doc_service, qdrant_service_llm_structured, qdrant_service_markdown
+    global doc_service, qdrant_service_llm_structured, qdrant_service_llm_structured_general, qdrant_service_markdown
     
     try:
         # Initialize document service
         doc_service = DocumentService()
 
         # Build index: LLM structured (from markdown in batches)
-        docs_llm = doc_service.create_documents_llm_structured_from_markdown(batch_size=15)
-        qdrant_service_llm_structured = QdrantService(k=3)
+        docs_llm = doc_service.create_documents_llm_structured_from_markdown(batch_size=15, pdf_path=DOC_PATH)
+        qdrant_service_llm_structured = QdrantService(k=3, collection_name="qdrant_service_llm_structured")
         qdrant_service_llm_structured.connect()
         qdrant_service_llm_structured.load(docs_llm)
 
+        # Build index: LLM structured general (for different document formats)
+        docs_llm_general = doc_service.create_documents_llm_structured_from_markdown_general(batch_size=1, pdf_path=DOC_PATH)
+        qdrant_service_llm_structured_general = QdrantService(k=3, collection_name="qdrant_service_llm_structured_general")
+        qdrant_service_llm_structured_general.connect()
+        qdrant_service_llm_structured_general.load(docs_llm_general)
+
         # Build index: Markdown
-        docs_markdown = doc_service.create_documents()
-        qdrant_service_markdown = QdrantService(k=3)
+        docs_markdown = doc_service.create_documents(pdf_path=DOC_PATH)
+        qdrant_service_markdown = QdrantService(k=3, collection_name="qdrant_service_markdown")
         qdrant_service_markdown.connect()
         qdrant_service_markdown.load(docs_markdown)
         
         print(
-            f"Loaded documents -> LLM: {len(docs_llm)}, Markdown: {len(docs_markdown)}"
+            f"Loaded documents -> LLM: {len(docs_llm)}, LLM General: {len(docs_llm_general)}, Markdown: {len(docs_markdown)}"
         )
         
     except Exception as e:
@@ -50,14 +63,20 @@ async def root():
     return {
         "message": "Norm AI Legal Query API", 
         "docs": "/docs",
-        "gradio": "/gradio",
         "query_endpoints": {
             "llm_structured": "/query/llm_structured",
+            "llm_structured_general": "/query/llm_structured_general",
             "markdown": "/query/markdown",
         },
     }
 
- 
+@app.get("/pdf-info")
+async def get_pdf_info():
+    """Get information about the loaded PDF document"""
+    return {
+        "pdf_path": DOC_PATH,
+        "pdf_name": os.path.basename(DOC_PATH)
+    }
 
 @app.get("/query/llm_structured", response_model=Output)
 async def query_llm_structured(
@@ -76,6 +95,25 @@ async def query_llm_structured(
         )
     except Exception as e:
         print(f"Error processing query (llm_structured): {e}")
+        raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
+
+@app.get("/query/llm_structured_general", response_model=Output)
+async def query_llm_structured_general(
+    q: str = Query(..., description="Query using LLM-structured general documents"),
+    similarity_top_k: int | None = Query(None, description="Top K results to retrieve"),
+    citation_chunk_size: int = Query(512, description="Chunk size for citations"),
+) -> Output:
+    global qdrant_service_llm_structured_general
+    if not qdrant_service_llm_structured_general:
+        raise HTTPException(status_code=503, detail="Service not initialized")
+    try:
+        return qdrant_service_llm_structured_general.query(
+            q,
+            similarity_top_k=similarity_top_k,
+            citation_chunk_size=citation_chunk_size,
+        )
+    except Exception as e:
+        print(f"Error processing query (llm_structured_general): {e}")
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 @app.get("/query/markdown", response_model=Output)
@@ -105,73 +143,10 @@ async def health_check():
         "services": {
             "document_service": doc_service is not None,
             "llm_structured": qdrant_service_llm_structured is not None,
+            "llm_structured_general": qdrant_service_llm_structured_general is not None,
             "markdown": qdrant_service_markdown is not None,
         }
     }
-
-# ------------------------
-# Gradio UI
-# ------------------------
-
-SAMPLE_QUERIES = [
-    "What happens if I steal?",
-    "Who resolves disputes between petty lords vs. between great houses?",
-    "Are holy men permitted to carry weapons under Maegor’s laws?",
-    "What support and rights must heirs provide to a surviving widow?",
-    "Is killing during a trial by combat considered murder?",
-    "How are taxes collected, and what exception applies to the New Gift/Night’s Watch?",
-]
-
-def _gradio_query_fn(query: str, index_choice: str, similarity_top_k: int, citation_chunk_size: int) -> str:
-    """
-    Gradio handler that routes the query to the chosen index and formats a markdown response.
-    """
-    global qdrant_service_llm_structured, qdrant_service_markdown
-    try:
-        if index_choice == "llm_structured":
-            if not qdrant_service_llm_structured:
-                return "Service not initialized yet. Try again in a few seconds."
-            result: Output = qdrant_service_llm_structured.query(
-                query,
-                similarity_top_k=similarity_top_k,
-                citation_chunk_size=citation_chunk_size,
-            )
-        else:
-            if not qdrant_service_markdown:
-                return "Service not initialized yet. Try again in a few seconds."
-            result: Output = qdrant_service_markdown.query(
-                query,
-                similarity_top_k=similarity_top_k,
-                citation_chunk_size=citation_chunk_size,
-            )
-
-        citations_md = "\n\n".join([
-            f"- **{c.source}**\n\n{c.text}" for c in (result.citations or [])
-        ]) if getattr(result, "citations", None) else "No citations available."
-
-        return f"**Answer**\n\n{result.response}\n\n**Citations**\n\n{citations_md}"
-    except Exception as e:
-        return f"Error processing query: {str(e)}"
-
-
-demo = gr.Interface(
-    fn=_gradio_query_fn,
-    inputs=[
-        gr.Textbox(label="Question", placeholder="Ask about the laws...", lines=2),
-        gr.Radio(["llm_structured", "markdown"], value="llm_structured", label="Index"),
-        gr.Number(value=3, label="Similarity Top K", precision=0),
-        gr.Number(value=512, label="Citation Chunk Size", precision=0),
-    ],
-    outputs=gr.Markdown(label="Response"),
-    title="Norm AI Legal Query",
-    description="Query Game of Thrones law sections and see cited sources.",
-    examples=[[q, "llm_structured", 3, 512] for q in SAMPLE_QUERIES],
-)
-
-demo.queue()
-
-# Mount Gradio app at /gradio alongside FastAPI endpoints
-app = gr.mount_gradio_app(app, demo, path="/gradio")
 
 if __name__ == "__main__":
     # Run with: python app/main.py
